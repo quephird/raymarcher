@@ -26,27 +26,30 @@ float get_capsule_distance(vec3 point, capsule_t capsule) {
     return length(point - point_projected_on_axis) - capsule.radius;
 }
 
+struct sphere_t {
+    vec3 position;
+    float radius;
+};
+
+float get_sphere_distance(vec3 point, sphere_t sphere) {
+    return length(point - sphere.position) - sphere.radius;
+}
+
 // Returns the distance to the nearest object in a scene from a point.
 //
-// NOTA BENE: For now, we are hardcoding the two objects in the scene,
-// a plane in the XZ plane and a sphere.
-float get_distance(vec3 point) {
-    // Note we store the radius of the sphere in the w coordinate.
-    vec4 sphere = vec4(0., 1., 6., 1.);
-
+// NOTA BENE: For now, we are hardcoding objects in the scene
+float get_nearest_distance(vec3 point) {
+    sphere_t sphere = sphere_t(vec3(1.5, 1.5, 6.), 1.0);
     capsule_t capsule = capsule_t(vec3(-2., 1., 6.), vec3(-1., 2., 6.), 0.5);
 
-    // The distance to the surface of a sphere is the
-    // distance to its center minus its radius.
-    float sphere_distance = length(point - sphere.xyz) - sphere.w;
-
+    float sphere_distance = get_sphere_distance(point, sphere);
     float capsule_distance = get_capsule_distance(point, capsule);
 
     // The distance is trivial to compute here.
     float plane_distance = point.y;
 
     // Choose the closest distance.
-    return min(capsule_distance, plane_distance);
+    return min(sphere_distance, min(capsule_distance, plane_distance));
 }
 
 // This takes a ray, whose origin and direction are passed in,
@@ -60,7 +63,7 @@ float march(vec3 ray_origin, vec3 ray_direction) {
     	vec3 new_point = ray_origin + ray_direction*ray_distance;
 
         // Get the distance to the closest object
-        float scene_distance = get_distance(new_point);
+        float scene_distance = get_nearest_distance(new_point);
 
         // Add that distance to the current one
         ray_distance += scene_distance;
@@ -78,7 +81,7 @@ float march(vec3 ray_origin, vec3 ray_direction) {
 // NOTA BENE: `get_distance` is what's doing most of the work here
 // since only it knows about the objects in the scene.
 vec3 get_normal_vector(vec3 point) {
-    float object_distance = get_distance(point);
+    float object_distance = get_nearest_distance(point);
 
     // This computes a normal by finding the distances between each of
     // three points slightly along the x, y, and z axes away from
@@ -87,9 +90,9 @@ vec3 get_normal_vector(vec3 point) {
     //
     //                  dx*î + dy*ĵ + dz*k̂
     vec3 normal = object_distance - vec3(
-        get_distance(point - vec3(0.01, 0., 0.)),
-        get_distance(point - vec3(0., 0.01, 0.)),
-        get_distance(point - vec3(0., 0., 0.01)));
+        get_nearest_distance(point - vec3(0.01, 0., 0.)),
+        get_nearest_distance(point - vec3(0., 0.01, 0.)),
+        get_nearest_distance(point - vec3(0., 0., 0.01)));
 
     return normalize(normal);
 }
