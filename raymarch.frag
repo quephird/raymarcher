@@ -15,6 +15,39 @@ struct capsule_t {
     float radius;
 };
 
+//
+//                                   ,──‾‾‾──,
+//                                 ,'         `.
+//                               __|_────* A   |
+//                _____─────‾‾‾‾‾  |     |     |
+//     *─────‾─‾─‾─────────────────|─────* C   |
+//     P                           |     |     |
+//                                 |─────* B   |
+//                                 `. r       ,'
+//                                   `──___──'
+//
+//  When P is such that its perpendicular falls between both capsule centers,
+//  A and B, intersecting at C, then the value of t along AB is computed
+//  by projecting PA onto AB, in which case t will be in the interval [0, 1].
+//
+//     *───__────────────────────────────* C
+//     P     ‾‾──__                      ·
+//                 ‾‾──__                ·
+//                       ‾‾──__      ,──‾·‾──,
+//                             ‾‾──,'_   ·    `.
+//                                 |  ‾‾─* A   |
+//                                 |     |     |
+//                                 |     |     |
+//                                 |     |     |
+//                                 |─────* B   |
+//                                 `. r       ,'
+//                                   `──___──'
+//
+// However when PC does _not_ intersect between A and B, then t falls _outside_
+// [0, 1], in the example above t < 0, and so we need to ensure we clamp t to [0, 1].
+// Doing that will effectively choose the closer of the two centers, and the
+// distance formula still holds.
+//
 float get_capsule_distance(vec3 point, capsule_t capsule) {
     vec3 point_to_top = point - capsule.one_end;
     vec3 capsule_axis = capsule.other_end - capsule.one_end;
@@ -31,6 +64,16 @@ struct sphere_t {
     float radius;
 };
 
+//
+//     *─────_____                   ,──‾|‾──,
+//     P          ‾‾‾‾‾─────_____  ,'    |r   `.
+//                               ‾‾|‾────*     |
+//                                 `.    S    ,'
+//                                   `──___──'
+//
+//  The distance between the point P and the sphere centered at S
+//  is the length of PS minus the radius r.
+//
 float get_sphere_distance(vec3 point, sphere_t sphere) {
     return length(point - sphere.position) - sphere.radius;
 }
@@ -57,7 +100,7 @@ float get_nearest_distance(vec3 point) {
 float march(vec3 ray_origin, vec3 ray_direction) {
     // Start at the ray origin...
 	float ray_distance = 0.;
-    
+
     for(int i=0; i<MAX_MARCH_ITERATIONS; i++) {
         // March down the ray the current distance
     	vec3 new_point = ray_origin + ray_direction*ray_distance;
@@ -73,7 +116,7 @@ float march(vec3 ray_origin, vec3 ray_direction) {
         if(ray_distance > MAX_SCENE_DISTANCE || scene_distance < MIN_SURFACE_DISTANCE)
             break;
     }
-    
+
     return ray_distance;
 }
 
@@ -142,7 +185,7 @@ void main() {
     vec2 uv = (gl_FragCoord.xy - 0.5*u_resolution) / u_resolution.y;
 
     vec3 color = vec3(0.0);
- 
+
     vec3 camera_position = vec3(0., 1., 0.);
     vec3 camera_direction = normalize(vec3(uv.xy, 1.0));
 
