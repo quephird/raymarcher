@@ -86,7 +86,10 @@ vec3 get_normal_vector(vec3 point) {
 //                       |   /
 //                       |  /  light vector
 //                       | /
-//           ____________|/_____________
+//                       |/
+//           ____________*______________
+//                  point
+//
 float get_diffused_light(vec3 point) {
     // Single light source
     vec3 light_position = vec3(0., 5., 6.);
@@ -96,6 +99,14 @@ float get_diffused_light(vec3 point) {
     // of the dot product
     vec3 normal = get_normal_vector(point);
     float color = dot(normal, light_direction);
+
+    // Now we check to see if another object is between the given
+    // point and the light source.
+    float object_distance = march(point+normal*MIN_SURFACE_DISTANCE, light_direction);
+
+    // If so, then darken the color to simulate shadowing
+    if (object_distance < length(light_position - point))
+        color *= 0.1;
 
     // The dot product above actually returns a value in [-1, 1],
     // and so we need to make sure the returned value is in [0, 1].
