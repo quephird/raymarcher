@@ -13,7 +13,7 @@ uniform vec2 u_resolution;
 //
 // NOTA BENE: For now, we are hardcoding the two objects in the scene,
 // a plane in the XZ plane and a sphere.
-float get_scene_distance(vec3 point) {
+float get_distance(vec3 point) {
     // Note we store the radius of the sphere in the w coordinate.
     vec4 sphere = vec4(0., 1., 6., 1.);
 
@@ -39,7 +39,7 @@ float march(vec3 ray_origin, vec3 ray_direction) {
     	vec3 new_point = ray_origin + ray_direction*ray_distance;
 
         // Get the distance to the closest object
-        float scene_distance = get_scene_distance(new_point);
+        float scene_distance = get_distance(new_point);
 
         // Add that distance to the current one
         ray_distance += scene_distance;
@@ -51,6 +51,55 @@ float march(vec3 ray_origin, vec3 ray_direction) {
     }
     
     return ray_distance;
+}
+
+// This function computes the normal vector at the point passed in.
+// NOTA BENE: `get_distance` is what's doing most of the work here
+// since only it knows about the objects in the scene.
+vec3 get_normal_vector(vec3 point) {
+    float object_distance = get_distance(point);
+
+    // This computes a normal by finding the distances between each of
+    // three points slightly along the x, y, and z axes away from
+    // the point. Each of these distances contributes to their
+    // respective components of the normal vector, i.e.:
+    //
+    //                  dx*î + dy*ĵ + dz*k̂
+    vec3 normal = object_distance - vec3(
+        get_distance(point - vec3(0.01, 0., 0.)),
+        get_distance(point - vec3(0., 0.01, 0.)),
+        get_distance(point - vec3(0., 0., 0.01)));
+
+    return normalize(normal);
+}
+
+// This function returns a scalar float representing
+// the brightness of color at the point passed in, given
+// a single white light source that is hardcoded below.
+//
+// Note that the light is brightest directly above a surface point,
+// and darker as the angle between the two vectors increases.
+//
+//                              * light source
+//
+//         normal vector
+//                       |   /
+//                       |  /  light vector
+//                       | /
+//           ____________|/_____________
+float get_diffused_light(vec3 point) {
+    // Single light source
+    vec3 light_position = vec3(0., 5., 6.);
+    vec3 light_direction = normalize(light_position - point);
+
+    // For now, just compute a color based on the magnitude
+    // of the dot product
+    vec3 normal = get_normal_vector(point);
+    float color = dot(normal, light_direction);
+
+    // The dot product above actually returns a value in [-1, 1],
+    // and so we need to make sure the returned value is in [0, 1].
+    return clamp(color, 0., 1.);
 }
 
 void main() {
@@ -65,10 +114,11 @@ void main() {
     // See if we get a hit to an object
     float object_distance = march(camera_position, camera_direction);
 
-    // Since all objects in this particular scene at at least one unit away,
-    // we need to attenuate the magnitude of `object_distance` if we
-    // want to use it as the color.
-    color = vec3(object_distance/6.);
+    // Travel down that distance to the point
+    vec3 surface_point = camera_position + camera_direction*object_distance;
+
+    float diffused_light = get_diffused_light(surface_point);
+    color = vec3(diffused_light);
 
     // Set pixel color!!!
     gl_FragColor = vec4(color, 1.0);
