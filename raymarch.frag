@@ -9,6 +9,23 @@ precision mediump float;
 uniform float u_time;
 uniform vec2 u_resolution;
 
+struct capsule_t {
+    vec3 one_end;
+    vec3 other_end;
+    float radius;
+};
+
+float get_capsule_distance(vec3 point, capsule_t capsule) {
+    vec3 point_to_top = point - capsule.one_end;
+    vec3 capsule_axis = capsule.other_end - capsule.one_end;
+
+    float t_along_axis = dot(point_to_top, capsule_axis) / dot(capsule_axis, capsule_axis);
+    t_along_axis = clamp(t_along_axis, 0., 1.);
+    vec3 point_projected_on_axis = capsule.one_end + capsule_axis*t_along_axis;
+
+    return length(point - point_projected_on_axis) - capsule.radius;
+}
+
 // Returns the distance to the nearest object in a scene from a point.
 //
 // NOTA BENE: For now, we are hardcoding the two objects in the scene,
@@ -17,15 +34,19 @@ float get_distance(vec3 point) {
     // Note we store the radius of the sphere in the w coordinate.
     vec4 sphere = vec4(0., 1., 6., 1.);
 
+    capsule_t capsule = capsule_t(vec3(-2., 1., 6.), vec3(-1., 2., 6.), 0.5);
+
     // The distance to the surface of a sphere is the
     // distance to its center minus its radius.
     float sphere_distance = length(point - sphere.xyz) - sphere.w;
+
+    float capsule_distance = get_capsule_distance(point, capsule);
 
     // The distance is trivial to compute here.
     float plane_distance = point.y;
 
     // Choose the closest distance.
-    return min(sphere_distance, plane_distance);
+    return min(capsule_distance, plane_distance);
 }
 
 // This takes a ray, whose origin and direction are passed in,
@@ -128,6 +149,7 @@ void main() {
     // Travel down that distance to the point
     vec3 surface_point = camera_position + camera_direction*object_distance;
 
+    // Compute grey-scale color
     float diffused_light = get_diffused_light(surface_point);
     color = vec3(diffused_light);
 
