@@ -9,6 +9,44 @@ precision mediump float;
 uniform float u_time;
 uniform vec2 u_resolution;
 
+struct torus_t {
+    vec3 position;
+    float primary_radius;
+    float secondary_radius;
+};
+
+//
+//                        __─────‾‾‾‾‾─────__
+//                    _─‾‾                   ‾‾─_
+//       P           /  _─_                      \
+//       *_         |  | | |      _* T            |
+//       | ‾‾──__    \│  |r │ _──‾               /
+//       |       ‾‾──_:_ | _│‾   R            _─‾
+//       |           D│_─‾‾─:────_____──────‾‾
+//       |         _──|  C  |
+//       |     _──‾    |   |
+//       | _──‾         ‾─‾
+//       *‾
+//       P'
+//
+//  So, this time, the minimal distance to a torus lying in the xz plane, the length
+//  of line segment PD, requires a few intermediate calculations. The first thing we
+//  can calculate is the length of the segment from the point on the xz plane that P
+//  projects onto, namely P', to the center of the torus, T. That means that the length
+//  of P' to the center of the closest outer circle, namely C, is the length of P'T
+//  minus the outer radius R. Since PP' abd P'C form a right triangle, and the length
+//  of PP' is simply the y value of P, then the length of PC can be easily calculated
+//  via the Pythagorean theorem. subtracting the outer radius, r, yields:
+//
+//                 length(PD) = √(length(P'C)^2 + P.y^2)) - r
+//
+float get_torus_distance(vec3 point, torus_t torus) {
+    float dx = length(point.xz - torus.position.xz) - torus.primary_radius;
+    float dy = point.y - torus.position.y;
+
+    return sqrt(dx*dx + dy*dy) - torus.secondary_radius;
+}
+
 struct capsule_t {
     vec3 one_end;
     vec3 other_end;
@@ -84,15 +122,19 @@ float get_sphere_distance(vec3 point, sphere_t sphere) {
 float get_nearest_distance(vec3 point) {
     sphere_t sphere = sphere_t(vec3(1.5, 1.5, 6.), 1.0);
     capsule_t capsule = capsule_t(vec3(-2., 1., 6.), vec3(-1., 2., 6.), 0.5);
+    torus_t torus = torus_t(vec3(0., 0.5, 4.), 1., 0.25);
 
     float sphere_distance = get_sphere_distance(point, sphere);
     float capsule_distance = get_capsule_distance(point, capsule);
+    float torus_distance = get_torus_distance(point, torus);
 
     // The distance is trivial to compute here.
     float plane_distance = point.y;
 
     // Choose the closest distance.
-    return min(sphere_distance, min(capsule_distance, plane_distance));
+    return min(plane_distance,
+               min(sphere_distance,
+                   min(capsule_distance, torus_distance)));
 }
 
 // This takes a ray, whose origin and direction are passed in,
@@ -186,7 +228,7 @@ void main() {
 
     vec3 color = vec3(0.0);
 
-    vec3 camera_position = vec3(0., 1., 0.);
+    vec3 camera_position = vec3(0., 2., -2.);
     vec3 camera_direction = normalize(vec3(uv.xy, 1.0));
 
     // See if we get a hit to an object
