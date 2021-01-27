@@ -9,6 +9,83 @@ precision mediump float;
 uniform float u_time;
 uniform vec2 u_resolution;
 
+struct box_t {
+    vec3 position;
+    float width;
+    float height;
+    float depth;
+};
+
+//
+//   2)                         |‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|
+//                              |                       |
+//                              |                       |
+//                              |    w/2                |
+//                              |───────────· B         |
+//                              |           |           |
+//                              |           | h/2       |
+//                              |           |           |
+//                              *___________|___________|
+//                     d ___───‾|
+//              ___───‾‾‾       | dy
+//        *──‾─‾────────────────*
+//     P              dx
+//
+//   3)                         |‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|
+//                              |                       |
+//                              |                       |
+//                              |    w/2                |
+//                              |───────────· B         |
+//     P           d = dx       |           |           |
+//     *─────_─_────────────────*           | h/2       |
+//              ‾‾‾───___       | dy        |           |
+//                       ‾‾‾────|___________|___________|
+//
+//
+//   4)                         |‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|
+//                              |                       |
+//                              |                       |
+//                              |    w/2                |
+//                              |───────────· B         |
+//                              |           |           |
+//                              |           | h/2       |
+//                              |  dx       |           |
+//                              |______*____|___________|
+//                               \     |
+//                                \    |
+//                                 \   | d = dy
+//                                  \  |
+//                                   \ |
+//                                    \|
+//                                     * P
+//
+//  Let's just consider a square for a moment. The minimum distance d from P
+//  to the square centered at B will depend on the two distances, dx and dy.
+//  There are four possibilities, three of which are pictured above:
+//
+//  1) dx<0 and dy<0: point is inside the cube, which we will ignore for now
+//  2) dx<0 and dy>0: distance to square is dy
+//  3) dx>0 and dy<0: distance to square is dx
+//  4) dx>0 and dy>0: distance to square is d
+//
+//  We can express this very pithily by noting that in each case, taking the
+//  `max` of the [dx, dy] and [0, 0] vectors will result in a vector whose
+//  components are nonnegative. (This illustrates how `max` can be exploited
+//  to avoid `if/else` conditionals.) That is:
+//
+//  2) dx<0 and dy>0: max([dx, dy], [0, 0]) -> [dx, 0]
+//  3) dx>0 and dy<0: max([dx, dy], [0, 0]) -> [0, dy]
+//  4) dx>0 and dy>0: max([dx, dy], [0, 0]) -> [dx, dy]
+//
+//  In each case, we can take the length of the resulting vector to get the
+//  desired distance, either to a corner or to a face. It's the same thing
+//  when we move to three dimensions.
+
+float get_box_distance(vec3 point, box_t box) {
+    vec3 half_sizes = vec3(box.width, box.height, box.depth) / 2.0;
+    return length(max(abs(point - box.position) - half_sizes, vec3(0.0)));
+}
+
 struct torus_t {
     vec3 position;
     float primary_radius;
@@ -123,18 +200,21 @@ float get_nearest_distance(vec3 point) {
     sphere_t sphere = sphere_t(vec3(1.5, 1.5, 6.), 1.0);
     capsule_t capsule = capsule_t(vec3(-2., 1., 6.), vec3(-1., 2., 6.), 0.5);
     torus_t torus = torus_t(vec3(0., 0.5, 4.), 1., 0.25);
+    box_t box = box_t(vec3(-2.5, 1., 4.), 1.0, 1.0, 1.0);
 
     float sphere_distance = get_sphere_distance(point, sphere);
     float capsule_distance = get_capsule_distance(point, capsule);
     float torus_distance = get_torus_distance(point, torus);
+    float box_distance = get_box_distance(point, box);
 
     // The distance is trivial to compute here.
     float plane_distance = point.y;
 
     // Choose the closest distance.
     return min(plane_distance,
-               min(sphere_distance,
-                   min(capsule_distance, torus_distance)));
+               min(box_distance,
+                  min(sphere_distance,
+                      min(capsule_distance, torus_distance))));
 }
 
 // This takes a ray, whose origin and direction are passed in,
@@ -228,7 +308,7 @@ void main() {
 
     vec3 color = vec3(0.0);
 
-    vec3 camera_position = vec3(0., 2., -2.);
+    vec3 camera_position = vec3(0., 2., -4.);
     vec3 camera_direction = normalize(vec3(uv.xy, 1.0));
 
     // See if we get a hit to an object
