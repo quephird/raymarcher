@@ -66,7 +66,7 @@ struct box_t {
 //  1) dx<0 and dy<0: point is inside the cube, which we will ignore for now
 //  2) dx<0 and dy>0: distance to square is dy
 //  3) dx>0 and dy<0: distance to square is dx
-//  4) dx>0 and dy>0: distance to square is d
+//  4) dx>0 and dy>0: distance to square is d = √(dx² + dy²)
 //
 //  We can express this very pithily by noting that in each case, taking the
 //  `max` of the [dx, dy] and [0, 0] vectors will result in a vector whose
@@ -122,6 +122,80 @@ float get_torus_distance(vec3 point, torus_t torus) {
     float dy = point.y - torus.position.y;
 
     return sqrt(dx*dx + dy*dy) - torus.secondary_radius;
+}
+
+struct cylinder_t {
+    vec3 one_end;
+    vec3 other_end;
+    float radius;
+};
+
+//     1)                      _───‾‾‾───_
+//                            |_    * A  _|
+//                            | ‾‾‾───‾‾‾ |
+//                            |     |     |
+//                            |     |     |
+//                            |     |     |
+//                            |     |     |
+//                            |  r  |     |
+//                            |_____* B  _|
+//               d      __──‾‾| ‾‾‾───‾‾‾
+//                __──‾‾      |     |
+//          __──‾‾            |     |
+//     *──‾‾──────────────────|─────|
+//     P
+//
+//     2)                      _───‾‾‾───_
+//                            |_    * A  _|
+//                            | ‾‾‾───‾‾‾ |
+//                 d          |  r  |     |
+//     *──────────────────────|─────|     |
+//     P                      |     |     |
+//                            |     |     |
+//                            |     |     |
+//                            |_    * B  _|
+//                              ‾‾‾───‾‾‾
+//
+//
+//     3)                      _───‾‾‾───_
+//                            |_    * A  _|
+//                            | ‾‾‾───‾‾‾ |
+//                            |     |     |
+//                            |     |     |
+//                            |     |     |
+//                            |     |     |
+//                            |  r  |     |
+//                            |_____* B  _|
+//                             \‾‾‾───‾‾‾
+//                              |  |
+//                              |  |
+//                               \ | d
+//                                ||
+//                                 |
+//                               P *
+//
+//  There are four possibilities, three of which are pictured above:
+//
+//  1) point and projection of point are external _infinite_ cylinder
+//  2) point is external to but projection of point is inside cylinder
+//  3) point is inside _infinite_ cylinder
+//  4) point is inside the cylinder, which we will ignore for now
+//
+
+float get_cylinder_distance(vec3 point, cylinder_t cylinder) {
+    vec3 point_to_top = point - cylinder.one_end;
+    vec3 cylinder_axis = cylinder.other_end - cylinder.one_end;
+    float axis_length = length(cylinder_axis);
+
+    float t_along_axis = dot(point_to_top, cylinder_axis) / dot(cylinder_axis, cylinder_axis);
+    vec3 point_projected_on_axis = cylinder.one_end + cylinder_axis*t_along_axis;
+
+    float distance_to_infinite_cylinder = length(point - point_projected_on_axis) - cylinder.radius;
+    float distance_to_cylinder_along_axis = (abs(t_along_axis - 0.5) - 0.5) * axis_length;
+    float distance_to_cylinder_edge = length(max(vec2(distance_to_infinite_cylinder, distance_to_cylinder_along_axis), 0.0));
+    float internal_distance = min(max(distance_to_infinite_cylinder, distance_to_cylinder_along_axis), 0.0);
+
+    return internal_distance + distance_to_cylinder_edge;
 }
 
 struct capsule_t {
@@ -180,11 +254,11 @@ struct sphere_t {
 };
 
 //
-//     *─────_____                   ,──‾|‾──,
-//     P          ‾‾‾‾‾─────_____  ,'    |r   `.
+//     *─────_____                   _──‾|‾──_
+//     P          ‾‾‾‾‾─────_____   /    |r   \
 //                               ‾‾|‾────*     |
-//                                 `.    S    ,'
-//                                   `──___──'
+//                                  \    S    /
+//                                   ‾──___──‾
 //
 //  The distance between the point P and the sphere centered at S
 //  is the length of PS minus the radius r.
@@ -201,20 +275,23 @@ float get_nearest_distance(vec3 point) {
     capsule_t capsule = capsule_t(vec3(-2., 1., 6.), vec3(-1., 2., 6.), 0.5);
     torus_t torus = torus_t(vec3(0., 0.5, 4.), 1., 0.25);
     box_t box = box_t(vec3(-2.5, 1., 4.), 1.0, 1.0, 1.0);
+    cylinder_t cylinder = cylinder_t(vec3(3., 0.5, 3.), vec3(2., 1.5, 3.), 0.5);
 
     float sphere_distance = get_sphere_distance(point, sphere);
     float capsule_distance = get_capsule_distance(point, capsule);
     float torus_distance = get_torus_distance(point, torus);
     float box_distance = get_box_distance(point, box);
+    float cylinder_distance = get_cylinder_distance(point, cylinder);
 
     // The distance is trivial to compute here.
     float plane_distance = point.y;
 
     // Choose the closest distance.
     return min(plane_distance,
-               min(box_distance,
-                  min(sphere_distance,
-                      min(capsule_distance, torus_distance))));
+               min(cylinder_distance,
+                   min(box_distance,
+                       min(sphere_distance,
+                           min(capsule_distance, torus_distance)))));
 }
 
 // This takes a ray, whose origin and direction are passed in,
@@ -281,7 +358,7 @@ vec3 get_normal_vector(vec3 point) {
 //
 float get_diffused_light(vec3 point) {
     // Single light source
-    vec3 light_position = vec3(0., 5., 6.);
+    vec3 light_position = vec3(4.0*cos(u_time), 5., 3.0+4.0*sin(u_time));
     vec3 light_direction = normalize(light_position - point);
 
     // For now, just compute a color based on the magnitude
