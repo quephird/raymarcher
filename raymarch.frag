@@ -9,11 +9,17 @@ precision mediump float;
 uniform float u_time;
 uniform vec2 u_resolution;
 
+struct nearest_distance_t {
+    float d;
+    vec3 color;
+};
+
 struct box_t {
     vec3 position;
     float width;
     float height;
     float depth;
+    vec3 color;
 };
 
 //
@@ -81,15 +87,18 @@ struct box_t {
 //  desired distance, either to a corner or to a face. It's the same thing
 //  when we move to three dimensions.
 
-float get_box_distance(vec3 point, box_t box) {
+nearest_distance_t get_box_distance(vec3 point, box_t box) {
     vec3 half_sizes = vec3(box.width, box.height, box.depth) / 2.0;
-    return length(max(abs(point - box.position) - half_sizes, vec3(0.0)));
+    float d = length(max(abs(point - box.position) - half_sizes, vec3(0.0)));
+
+    return nearest_distance_t(d, box.color);
 }
 
 struct torus_t {
     vec3 position;
     float primary_radius;
     float secondary_radius;
+    vec3 color;
 };
 
 //
@@ -117,11 +126,13 @@ struct torus_t {
 //
 //                 length(PD) = √(length(P'C)^2 + P.y^2)) - r
 //
-float get_torus_distance(vec3 point, torus_t torus) {
+
+nearest_distance_t get_torus_distance(vec3 point, torus_t torus) {
     float dx = length(point.xz - torus.position.xz) - torus.primary_radius;
     float dy = point.y - torus.position.y;
 
-    return sqrt(dx*dx + dy*dy) - torus.secondary_radius;
+    float d = sqrt(dx*dx + dy*dy) - torus.secondary_radius
+    return nearest_distance_t(d, torus.color);
 }
 
 struct cylinder_t {
@@ -202,6 +213,7 @@ struct capsule_t {
     vec3 one_end;
     vec3 other_end;
     float radius;
+    vec3 color;
 };
 
 //
@@ -237,7 +249,7 @@ struct capsule_t {
 // Doing that will effectively choose the closer of the two centers, and the
 // distance formula still holds.
 //
-float get_capsule_distance(vec3 point, capsule_t capsule) {
+nearest_distance_t get_capsule_distance(vec3 point, capsule_t capsule) {
     vec3 point_to_top = point - capsule.one_end;
     vec3 capsule_axis = capsule.other_end - capsule.one_end;
 
@@ -245,12 +257,15 @@ float get_capsule_distance(vec3 point, capsule_t capsule) {
     t_along_axis = clamp(t_along_axis, 0., 1.);
     vec3 point_projected_on_axis = capsule.one_end + capsule_axis*t_along_axis;
 
-    return length(point - point_projected_on_axis) - capsule.radius;
+    float d = length(point - point_projected_on_axis) - capsule.radius;
+
+    return nearest_distance_t(d, capsule.color);
 }
 
 struct sphere_t {
     vec3 position;
     float radius;
+    vec3 color;
 };
 
 //
@@ -263,67 +278,94 @@ struct sphere_t {
 //  The distance between the point P and the sphere centered at S
 //  is the length of PS minus the radius r.
 //
-float get_sphere_distance(vec3 point, sphere_t sphere) {
-    return length(point - sphere.position) - sphere.radius;
+nearest_distance_t get_sphere_distance(vec3 point, sphere_t sphere) {
+    float d = length(point - sphere.position) - sphere.radius;
+
+    return nearest_distance_t(d, sphere.color);
 }
+
+struct scene_t {
+    sphere_t sphere;
+    capsule_t capsule;
+    torus_t torus;
+    box_t box;
+    // cylinder_t cylinder;
+};
 
 // Returns the distance to the nearest object in a scene from a point.
 //
-// NOTA BENE: For now, we are hardcoding objects in the scene
-float get_nearest_distance(vec3 point) {
-    sphere_t sphere = sphere_t(vec3(1.5, 1.5, 6.), 1.0);
-    capsule_t capsule = capsule_t(vec3(-2., 1., 6.), vec3(-1., 2., 6.), 0.5);
-    torus_t torus = torus_t(vec3(0., 0.5, 4.), 1., 0.25);
-    box_t box = box_t(vec3(-2.5, 1., 4.), 1.0, 1.0, 1.0);
-    cylinder_t cylinder = cylinder_t(vec3(3., 0.5, 3.), vec3(2., 1.5, 3.), 0.5);
-
-    float sphere_distance = get_sphere_distance(point, sphere);
-    float capsule_distance = get_capsule_distance(point, capsule);
-    float torus_distance = get_torus_distance(point, torus);
-    float box_distance = get_box_distance(point, box);
-    float cylinder_distance = get_cylinder_distance(point, cylinder);
+// NOTA BENE: For now, we are hardcoding some knowledge of the scene here.
+nearest_distance_t get_nearest_distance(vec3 point, scene_t scene) {
+    nearest_distance_t sphere_distance = get_sphere_distance(point, scene.sphere);
+    nearest_distance_t capsule_distance = get_capsule_distance(point, scene.capsule);
+    nearest_distance_t torus_distance = get_torus_distance(point, scene.torus);
+    nearest_distance_t box_distance = get_box_distance(point, scene.box);
+    // float cylinder_distance = get_cylinder_distance(point, scene.cylinder);
 
     // The distance is trivial to compute here.
     float plane_distance = point.y;
 
+    nearest_distance_t nearest_distance = nearest_distance_t(0.0, vec3(0.0));
+
     // Choose the closest distance.
-    return min(plane_distance,
-               min(cylinder_distance,
-                   min(box_distance,
-                       min(sphere_distance,
-                           min(capsule_distance, torus_distance)))));
+    if (plane_distance < sphere_distance.d) {
+        nearest_distance = nearest_distance_t(plane_distance, vec3(1.0, 1.0, 1.0));
+    } else {
+        nearest_distance = sphere_distance;
+    }
+
+    if (nearest_distance.d > capsule_distance.d) {
+        nearest_distance = capsule_distance;
+    }
+
+    if (nearest_distance.d > box_distance.d) {
+        nearest_distance = box_distance;
+    }
+
+    if (nearest_distance.d > torus_distance.d) {
+        nearest_distance = torus_distance;
+    }
+
+    return nearest_distance;
+
+            //    min(cylinder_distance,
+            //        min(box_distance,
+            //            min(sphere_distance,
+            //                min(capsule_distance, torus_distance)))));
 }
 
 // This takes a ray, whose origin and direction are passed in,
 // and returns the distance to the closest object in a scene.
-float march(vec3 ray_origin, vec3 ray_direction) {
+nearest_distance_t march(vec3 ray_origin, vec3 ray_direction, scene_t scene) {
     // Start at the ray origin...
 	float ray_distance = 0.;
+    vec3 object_color = vec3(0.0);
 
     for(int i=0; i<MAX_MARCH_ITERATIONS; i++) {
         // March down the ray the current distance
     	vec3 new_point = ray_origin + ray_direction*ray_distance;
 
         // Get the distance to the closest object
-        float scene_distance = get_nearest_distance(new_point);
+        nearest_distance_t scene_distance = get_nearest_distance(new_point, scene);
 
         // Add that distance to the current one
-        ray_distance += scene_distance;
+        ray_distance += scene_distance.d;
+        object_color = scene_distance.color;
 
         // If we've gone too far or we're sufficiently close to an object
         // stop iterating.
-        if(ray_distance > MAX_SCENE_DISTANCE || scene_distance < MIN_SURFACE_DISTANCE)
+        if(ray_distance > MAX_SCENE_DISTANCE || scene_distance.d < MIN_SURFACE_DISTANCE)
             break;
     }
 
-    return ray_distance;
+    return nearest_distance_t(ray_distance, object_color);
 }
 
 // This function computes the normal vector at the point passed in.
 // NOTA BENE: `get_distance` is what's doing most of the work here
 // since only it knows about the objects in the scene.
-vec3 get_normal_vector(vec3 point) {
-    float object_distance = get_nearest_distance(point);
+vec3 get_normal_vector(vec3 point, scene_t scene) {
+    nearest_distance_t object_distance = get_nearest_distance(point, scene);
 
     // This computes a normal by finding the distances between each of
     // three points slightly along the x, y, and z axes away from
@@ -331,10 +373,11 @@ vec3 get_normal_vector(vec3 point) {
     // respective components of the normal vector, i.e.:
     //
     //                  dx*î + dy*ĵ + dz*k̂
-    vec3 normal = object_distance - vec3(
-        get_nearest_distance(point - vec3(0.01, 0., 0.)),
-        get_nearest_distance(point - vec3(0., 0.01, 0.)),
-        get_nearest_distance(point - vec3(0., 0., 0.01)));
+    nearest_distance_t nearest_x = get_nearest_distance(point - vec3(0.01, 0., 0.), scene);
+    nearest_distance_t nearest_y = get_nearest_distance(point - vec3(0., 0.01, 0.), scene);
+    nearest_distance_t nearest_z = get_nearest_distance(point - vec3(0., 0., 0.01), scene);
+
+    vec3 normal = object_distance.d - vec3(nearest_x.d, nearest_y.d, nearest_z.d);
 
     return normalize(normal);
 }
@@ -356,22 +399,24 @@ vec3 get_normal_vector(vec3 point) {
 //           ____________*______________
 //                  point
 //
-float get_diffused_light(vec3 point) {
+float get_diffused_light(vec3 point, scene_t scene) {
+    vec3 diffused_color = vec3(0.0);
+
     // Single light source
     vec3 light_position = vec3(4.0*cos(u_time), 5., 3.0+4.0*sin(u_time));
     vec3 light_direction = normalize(light_position - point);
 
     // For now, just compute a color based on the magnitude
     // of the dot product
-    vec3 normal = get_normal_vector(point);
+    vec3 normal = get_normal_vector(point, scene);
     float color = dot(normal, light_direction);
 
     // Now we check to see if another object is between the given
     // point and the light source.
-    float object_distance = march(point+normal*MIN_SURFACE_DISTANCE, light_direction);
+    nearest_distance_t object_distance = march(point+normal*MIN_SURFACE_DISTANCE, light_direction, scene);
 
     // If so, then darken the color to simulate shadowing
-    if (object_distance < length(light_position - point))
+    if (object_distance.d < length(light_position - point))
         color *= 0.1;
 
     // The dot product above actually returns a value in [-1, 1],
@@ -388,15 +433,25 @@ void main() {
     vec3 camera_position = vec3(0., 2., -4.);
     vec3 camera_direction = normalize(vec3(uv.xy, 1.0));
 
+    // Construct the scene here
+    sphere_t sphere = sphere_t(vec3(1.5, 1.5, 6.), 1.0, vec3(1.0, 0.0, 0.0));
+    capsule_t capsule = capsule_t(vec3(-2., 1., 6.), vec3(-1., 2., 6.), 0.5, vec3(0.0, 1.0, 0.0));
+    torus_t torus = torus_t(vec3(0., 0.5, 4.), 1., 0.25, vec3(1.0, 0.5, 0.0));
+    box_t box = box_t(vec3(-2.5, 1., 4.), 1.0, 1.0, 1.0, vec3(0.5, 0.0, 1.0));
+    // cylinder_t cylinder = cylinder_t(vec3(3., 0.5, 3.), vec3(2., 1.5, 3.), 0.5);
+
+    // scene_t scene = scene_t(sphere, capsule, torus, box, cylinder);
+    scene_t scene = scene_t(sphere, capsule, box, torus);
+
     // See if we get a hit to an object
-    float object_distance = march(camera_position, camera_direction);
+    nearest_distance_t object_distance = march(camera_position, camera_direction, scene);
 
     // Travel down that distance to the point
-    vec3 surface_point = camera_position + camera_direction*object_distance;
+    vec3 surface_point = camera_position + camera_direction*object_distance.d;
 
     // Compute grey-scale color
-    float diffused_light = get_diffused_light(surface_point);
-    color = vec3(diffused_light);
+    float diffused_light = get_diffused_light(surface_point, scene);
+    color = object_distance.color*0.5 + diffused_light;
 
     // Set pixel color!!!
     gl_FragColor = vec4(color, 1.0);
