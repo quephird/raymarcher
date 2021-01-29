@@ -22,9 +22,7 @@ struct nearest_distance_t {
 
 struct box_t {
     vec3 position;
-    float width;
-    float height;
-    float depth;
+    vec3 dimensions;
     vec3 color;
 };
 
@@ -94,7 +92,7 @@ struct box_t {
 //  when we move to three dimensions.
 
 nearest_distance_t get_box_distance(vec3 point, box_t box) {
-    vec3 half_sizes = vec3(box.width, box.height, box.depth) / 2.0;
+    vec3 half_sizes = box.dimensions / 2.0;
     float d = length(max(abs(point - box.position) - half_sizes, vec3(0.0)));
 
     return nearest_distance_t(d, box.color);
@@ -439,13 +437,13 @@ void main() {
     vec3 color = vec3(0.0);
 
     vec3 camera_position = vec3(0.0, 2.0, -4.0);
-    vec3 camera_direction = normalize(vec3(uv.xy, 1.0));
+    vec3 camera_direction = normalize(vec3(uv.x, uv.y, 1.0));
 
     // Construct the scene here
     sphere_t sphere = sphere_t(vec3(1.5, 1.5, 6.), 1.0, RED);
     capsule_t capsule = capsule_t(vec3(-2., 1., 6.), vec3(-1., 2., 6.), 0.5, GREEN);
     torus_t torus = torus_t(vec3(0., 0.5, 4.), 1., 0.25, ORANGE);
-    box_t box = box_t(vec3(-2.5, 1., 4.), 1.0, 1.0, 1.0, PURPLE);
+    box_t box = box_t(vec3(-2.5, 1., 4.), vec3(1.0, 1.0, 1.0), PURPLE);
     cylinder_t cylinder = cylinder_t(vec3(3., 0.5, 3.), vec3(2., 1.5, 3.), 0.5, YELLOW);
 
     scene_t scene = scene_t(sphere, capsule, torus, box, cylinder);
