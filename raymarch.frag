@@ -8,6 +8,7 @@
 #define ORANGE vec3(1.0, 0.5, 0.0)
 #define YELLOW vec3(1.0, 1.0, 0.0)
 #define GREEN vec3(0.0, 1.0, 0.0)
+#define BLUE vec3(0.0, 0.0, 1.0)
 #define PURPLE vec3(0.5, 0.0, 1.0)
 
 precision mediump float;
@@ -20,11 +21,43 @@ struct nearest_distance_t {
     vec3 color;
 };
 
+struct rounded_box_t {
+    vec3 position;
+    vec3 dimensions;
+    float outer_radius;
+    vec3 color;
+};
+
+//
+//                                 _─‾‾|‾‾‾‾‾‾‾‾‾|‾‾─_
+//                               _‾  r |         |    ‾_
+//                              |______|_________|______|
+//                              |      |         |      |
+//                              |      |         |      |
+//                              |      | w       |      |
+//                              |      |────· B  |      |
+//                              |      |    |    |      |
+//                              |      |   h|    |      |
+//                              |      |    |    |      |
+//                              |‾‾‾‾‾‾|‾‾‾‾‾‾‾‾‾|‾‾‾‾‾‾|
+//                               ‾_    |         |    _‾
+//                                 ‾─__|_________|__─‾
+//
+
+nearest_distance_t get_rounded_box_distance(vec3 point, rounded_box_t rounded_box) {
+    vec3 half_sizes = rounded_box.dimensions / 2.0;
+    vec3 q = abs(point - rounded_box.position) - half_sizes;
+    float d = length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - rounded_box.outer_radius;
+
+    return nearest_distance_t(d, rounded_box.color);
+}
+
 struct box_t {
     vec3 position;
     vec3 dimensions;
     vec3 color;
 };
+
 
 //
 //   2)                         |‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾|
@@ -297,6 +330,7 @@ struct scene_t {
     torus_t torus;
     box_t box;
     cylinder_t cylinder;
+    rounded_box_t rounded_box;
 };
 
 // Returns the distance to the nearest object in a scene from a point.
@@ -308,6 +342,7 @@ nearest_distance_t get_nearest_distance(vec3 point, scene_t scene) {
     nearest_distance_t torus_distance = get_torus_distance(point, scene.torus);
     nearest_distance_t box_distance = get_box_distance(point, scene.box);
     nearest_distance_t cylinder_distance = get_cylinder_distance(point, scene.cylinder);
+    nearest_distance_t rounded_box_distance = get_rounded_box_distance(point, scene.rounded_box);
 
     // The distance is trivial to compute here.
     float plane_distance = point.y;
@@ -335,6 +370,10 @@ nearest_distance_t get_nearest_distance(vec3 point, scene_t scene) {
 
     if (nearest_distance.d > cylinder_distance.d) {
         nearest_distance = cylinder_distance;
+    }
+
+    if (nearest_distance.d > rounded_box_distance.d) {
+        nearest_distance = rounded_box_distance;
     }
 
     return nearest_distance;
@@ -436,17 +475,25 @@ void main() {
 
     vec3 color = vec3(0.0);
 
-    vec3 camera_position = vec3(0.0, 2.0, -4.0);
-    vec3 camera_direction = normalize(vec3(uv.x, uv.y, 1.0));
+    // Camera position rotates about y-axis now
+    vec3 camera_position = vec3(-10.*cos(u_time+1.57), 3.0, 4.-10.*sin(u_time+1.57));
+
+    // Camera direction now always faces the center of the scene!
+    mat3 rotation_about_y_axis;
+    rotation_about_y_axis[0] = vec3(cos(u_time), 0.0, sin(u_time));
+    rotation_about_y_axis[1] = vec3(0.0, 1.0, 0.0);
+    rotation_about_y_axis[2] = vec3(-sin(u_time), 0.0, cos(u_time));
+    vec3 camera_direction = normalize(rotation_about_y_axis*vec3(uv.xy, 1.0));
 
     // Construct the scene here
     sphere_t sphere = sphere_t(vec3(1.5, 1.5, 6.), 1.0, RED);
     capsule_t capsule = capsule_t(vec3(-2., 1., 6.), vec3(-1., 2., 6.), 0.5, GREEN);
     torus_t torus = torus_t(vec3(0., 0.5, 4.), 1., 0.25, ORANGE);
     box_t box = box_t(vec3(-2.5, 1., 4.), vec3(1.0, 1.0, 1.0), PURPLE);
-    cylinder_t cylinder = cylinder_t(vec3(3., 0.5, 3.), vec3(2., 1.5, 3.), 0.5, YELLOW);
+    cylinder_t cylinder = cylinder_t(vec3(3., 0.5, 4.), vec3(2., 1.5, 3.), 0.5, YELLOW);
+    rounded_box_t rounded_box = rounded_box_t(vec3(1.5, 0.7, 2.), vec3(1., 1., 1.), 0.1, BLUE);
 
-    scene_t scene = scene_t(sphere, capsule, torus, box, cylinder);
+    scene_t scene = scene_t(sphere, capsule, torus, box, cylinder, rounded_box);
 
     // See if we get a hit to an object
     nearest_distance_t object_distance = march(camera_position, camera_direction, scene);
